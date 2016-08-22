@@ -1,4 +1,4 @@
-A tool for create virual serial port for PC
+A tool to create a pair of virtual ttys
 
 Usage:
-	sudo python vserialport.py
+	[sudo] python vttys.py

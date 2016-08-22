@@ -1,4 +1,4 @@
-#! /usr/bin/env python --> #: sudo python vserialport.py
+#! /usr/bin/env python --> #: sudo python vttys.py
 
 import pty
 import os
