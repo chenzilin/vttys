@@ -1,0 +1,10 @@
+.tmp_versions/
+.vttys.ko.cmd
+.vttys.mod.o.cmd
+.vttys.o.cmd
+Module.symvers
+modules.order
+vttys.ko
+vttys.mod.c
+vttys.mod.o
+vttys.o
