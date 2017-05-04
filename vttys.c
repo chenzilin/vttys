@@ -95,13 +95,13 @@ static int tty0tty_open(struct tty_struct *tty, struct file *file)
 
          if( (index % 2) == 0)
          {
-                if(tty0tty_table[index+1] != NULL) 
+                if(tty0tty_table[index+1] != NULL)
 	          if (tty0tty_table[index+1]->open_count > 0)
                     mcr=tty0tty_table[index+1]->mcr;
          }
          else
          {
-                if(tty0tty_table[index-1] != NULL) 
+                if(tty0tty_table[index-1] != NULL)
 	          if (tty0tty_table[index-1]->open_count > 0)
                     mcr=tty0tty_table[index-1]->mcr;
          }
@@ -146,13 +146,13 @@ static void do_close(struct tty0tty_serial *tty0tty)
 #endif
         if( (tty0tty->tty->index % 2) == 0)
         {
-           if(tty0tty_table[tty0tty->tty->index+1] != NULL) 
+           if(tty0tty_table[tty0tty->tty->index+1] != NULL)
 	     if (tty0tty_table[tty0tty->tty->index+1]->open_count > 0)
                tty0tty_table[tty0tty->tty->index+1]->msr=msr;
         }
         else
         {
-           if(tty0tty_table[tty0tty->tty->index-1] != NULL) 
+           if(tty0tty_table[tty0tty->tty->index-1] != NULL)
 	     if (tty0tty_table[tty0tty->tty->index-1]->open_count > 0)
                tty0tty_table[tty0tty->tty->index-1]->msr=msr;
         }
@@ -198,13 +198,13 @@ static int tty0tty_write(struct tty_struct *tty, const unsigned char *buffer, in
 
         if( (tty0tty->tty->index % 2) == 0)
         {
-         if(tty0tty_table[tty0tty->tty->index+1] != NULL) 
+         if(tty0tty_table[tty0tty->tty->index+1] != NULL)
 	   if (tty0tty_table[tty0tty->tty->index+1]->open_count > 0)
              ttyx=tty0tty_table[tty0tty->tty->index+1]->tty;
         }
         else
         {
-         if(tty0tty_table[tty0tty->tty->index-1] != NULL) 
+         if(tty0tty_table[tty0tty->tty->index-1] != NULL)
 	   if (tty0tty_table[tty0tty->tty->index-1]->open_count > 0)
              ttyx=tty0tty_table[tty0tty->tty->index-1]->tty;
         }
@@ -228,7 +228,7 @@ exit:
 	return retval;
 }
 
-static int tty0tty_write_room(struct tty_struct *tty) 
+static int tty0tty_write_room(struct tty_struct *tty)
 {
 	struct tty0tty_serial *tty0tty = tty->driver_data;
 	int room = -EINVAL;
@@ -259,7 +259,7 @@ static void tty0tty_set_termios(struct tty_struct *tty, struct ktermios *old_ter
 {
 	unsigned int cflag;
 	unsigned int iflag;
-	
+
 #ifdef SCULL_DEBUG
         printk(KERN_DEBUG "%s - \n", __FUNCTION__);
 #endif
@@ -275,7 +275,7 @@ static void tty0tty_set_termios(struct tty_struct *tty, struct ktermios *old_ter
 	/* check that they really want us to change something */
 	if (old_termios) {
 		if ((cflag == old_termios->c_cflag) &&
-		    (RELEVANT_IFLAG(iflag) == 
+		    (RELEVANT_IFLAG(iflag) ==
 		     RELEVANT_IFLAG(old_termios->c_iflag))) {
 #ifdef SCULL_DEBUG
 			printk(KERN_DEBUG " - nothing to change...\n");
@@ -373,9 +373,6 @@ static int tty0tty_tiocmget(struct tty_struct *tty)
 }
 
 
-
-
-
 //static int tty0tty_tiocmset(struct tty_struct *tty, struct file *file,
 static int tty0tty_tiocmset(struct tty_struct *tty, 
                          unsigned int set, unsigned int clear)
@@ -390,13 +387,13 @@ static int tty0tty_tiocmset(struct tty_struct *tty,
 
         if( (tty0tty->tty->index % 2) == 0)
         { 
-           if(tty0tty_table[tty0tty->tty->index+1] != NULL) 
+           if(tty0tty_table[tty0tty->tty->index+1] != NULL)
 	     if (tty0tty_table[tty0tty->tty->index+1]->open_count > 0)
                msr=tty0tty_table[tty0tty->tty->index+1]->msr;
         }
         else
         {
-           if(tty0tty_table[tty0tty->tty->index-1] != NULL) 
+           if(tty0tty_table[tty0tty->tty->index-1] != NULL)
 	     if (tty0tty_table[tty0tty->tty->index-1]->open_count > 0)
                msr=tty0tty_table[tty0tty->tty->index-1]->msr;
         }
@@ -434,13 +431,13 @@ static int tty0tty_tiocmset(struct tty_struct *tty,
         
         if( (tty0tty->tty->index % 2) == 0)
         {
-           if(tty0tty_table[tty0tty->tty->index+1] != NULL) 
+           if(tty0tty_table[tty0tty->tty->index+1] != NULL)
 	     if (tty0tty_table[tty0tty->tty->index+1]->open_count > 0)
                tty0tty_table[tty0tty->tty->index+1]->msr=msr;
         }
         else
         {
-           if(tty0tty_table[tty0tty->tty->index-1] != NULL) 
+           if(tty0tty_table[tty0tty->tty->index-1] != NULL)
 	     if (tty0tty_table[tty0tty->tty->index-1]->open_count > 0)
                tty0tty_table[tty0tty->tty->index-1]->msr=msr;
         }
@@ -448,7 +445,7 @@ static int tty0tty_tiocmset(struct tty_struct *tty,
 }
 
 
-static int tty0tty_ioctl_tiocgserial(struct tty_struct *tty, 
+static int tty0tty_ioctl_tiocgserial(struct tty_struct *tty,
                       unsigned int cmd, unsigned long arg)
 {
 	struct tty0tty_serial *tty0tty = tty->driver_data;
@@ -629,7 +626,7 @@ static int __init tty0tty_init(void)
 
 
 	tty_set_operations(tty0tty_tty_driver, &serial_ops);
-        
+
         for(i=0;i<2*pairs;i++)
         {
           tty_port_init(&tport[i]);
