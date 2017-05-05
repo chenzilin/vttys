@@ -9,6 +9,7 @@ set (SRC_VERSION_PATCH 1)
 set (SRC_VERSION ${SRC_VERSION_MAJOR}.${SRC_VERSION_MINOR}.${SRC_VERSION_PATCH})
 set (PROJECT_VERSION "${SRC_VERSION}")
 
+#add_definitions(-DDEBUG)
 add_definitions(-D_GNU_SOURCE)
 
 install(TARGETS vttys DESTINATION bin)

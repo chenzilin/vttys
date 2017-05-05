@@ -8,32 +8,41 @@
 
 #include <termio.h>
 
+static char slave1[64];
+static char master1[64];
+static char slave2[64];
+static char master2[64];
+
 static char buffer[1024];
+
+static int g_argc = 1;
+static char argv1[64];
+static char argv2[64];
 
 int ptym_open(char *pts_name, char *pts_name_s , int pts_namesz)
 {
-    char    *ptr;
     int     fdm;
+    char    *ptr;
 
     strncpy(pts_name, "/dev/ptmx", pts_namesz);
     pts_name[pts_namesz - 1] = '\0';
 
 
-    if ((fdm = posix_openpt(O_RDWR | O_NONBLOCK)) < 0) return(-1);
+    if ((fdm = posix_openpt(O_RDWR | O_NONBLOCK)) < 0) return -1;
 
     if (grantpt(fdm) < 0) {
         close(fdm);
-        return(-2);
+        return -2;
     }
 
     if (unlockpt(fdm) < 0) {
         close(fdm);
-        return(-3);
+        return -3;
     }
 
     if ((ptr = ptsname(fdm)) == NULL) {
         close(fdm);
-        return(-4);
+        return -4;
     }
 
     strncpy(pts_name_s, ptr, pts_namesz);
@@ -41,7 +50,6 @@ int ptym_open(char *pts_name, char *pts_name_s , int pts_namesz)
 
     return(fdm);
 }
-
 
 int conf_ser(int serialDev)
 {
@@ -56,7 +64,6 @@ int conf_ser(int serialDev)
     cfmakeraw(&params);
 
     rc = cfsetispeed(&params, B9600);
-
     rc = cfsetospeed(&params, B9600);
 
     // CREAD - Enable port to read data
@@ -76,11 +83,12 @@ int conf_ser(int serialDev)
     return EXIT_SUCCESS;
 }
 
-void copydata(int fdfrom, int fdto)
+void copydata(int fdfrom, int fdto, int direction)
 {
     ssize_t br, bw;
     char *pbuf = buffer;
     br = read(fdfrom, buffer, 1024);
+
     if (br < 0) {
         if (errno == EAGAIN || errno == EIO) {
             br = 0;
@@ -91,6 +99,30 @@ void copydata(int fdfrom, int fdto)
         }
     }
     if (br > 0) {
+
+#ifdef DEBUG
+        if (direction < 1) {
+            if (g_argc >= 3) {
+                printf("\n%s ==> %s:\n", argv1, argv2);
+            }
+            else {
+                printf("\n%s ==> %s:\n", slave1, slave2);
+            }
+        }
+        else {
+            if (g_argc >= 3) {
+                printf("\n%s ==> %s:\n", argv2, argv1);
+            }
+            else {
+                printf("\n%s ==> %s:\n", slave2, slave1);
+            }
+        }
+
+        int i = 0;
+        while (i < br) {
+            fprintf(stderr, "%x", buffer[i++]);
+        }
+#endif
         do
         {
             do
@@ -107,8 +139,7 @@ void copydata(int fdfrom, int fdto)
             fprintf(stderr, "Write error, br=%d bw=%d\n", (int) br, (int) bw);
             usleep(500000);
             // discard input
-            while (read(fdfrom, buffer, 1024) > 0)
-                ;
+            while (read(fdfrom, buffer, 1024) > 0) ;
         }
     }
     else {
@@ -118,20 +149,12 @@ void copydata(int fdfrom, int fdto)
 
 int main(int argc, char* argv[])
 {
-    char master1[1024];
-    char slave1[1024];
-    char master2[1024];
-    char slave2[1024];
-
     int fd1;
     int fd2;
-
     fd_set rfds;
-    int retval;
 
-    fd1=ptym_open(master1,slave1,1024);
-
-    fd2=ptym_open(master2,slave2,1024);
+    fd1=ptym_open(master1, slave1, 64);
+    fd2=ptym_open(master2, slave2, 64);
 
     if (argc >= 3) {
         unlink(argv[1]);
@@ -144,10 +167,14 @@ int main(int argc, char* argv[])
             fprintf(stderr, "Cannot create: %s\n", argv[2]);
             return 1;
         }
-        printf("(%s) <=> (%s)\n",argv[1],argv[2]);
+
+        g_argc = argc;
+        strcpy(argv1, argv[1]);
+        strcpy(argv2, argv[2]);
+        printf("\n%s <=> %s\n", argv1, argv2);
     }
     else {
-        printf("(%s) <=> (%s)\n",slave1,slave2);
+        printf("\n%s <=> %s\n", slave1, slave2);
     }
 
     conf_ser(fd1);
@@ -159,18 +186,17 @@ int main(int argc, char* argv[])
         FD_SET(fd1, &rfds);
         FD_SET(fd2, &rfds);
 
-        retval = select(fd2 + 1, &rfds, NULL, NULL, NULL);
-        if (retval == -1) {
+        if (-1 == select(fd2 + 1, &rfds, NULL, NULL, NULL)) {
             perror("select");
             return 1;
         }
 
         if (FD_ISSET(fd1, &rfds)) {
-            copydata(fd1, fd2);
+            copydata(fd1, fd2, 0);
         }
 
         if (FD_ISSET(fd2, &rfds)) {
-            copydata(fd2, fd1);
+            copydata(fd2, fd1, 1);
         }
     }
 
