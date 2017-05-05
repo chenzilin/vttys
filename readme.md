@@ -7,6 +7,6 @@ Compile:
 
 Usage:
 
-	[sudo] ./vttys
+	./vttys
 
-	./vttys /dev/vserialport0 /dev/vserialport1
+	[sudo] ./vttys /dev/vserialport0 /dev/vserialport1
