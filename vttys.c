@@ -4,14 +4,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <termio.h>
+#include <signal.h>
+#include <pthread.h>
 #include <sys/select.h>
 
-#include <termio.h>
-
 static char slave1[64];
-static char master1[64];
 static char slave2[64];
-static char master2[64];
 
 static char buffer[1024];
 
@@ -19,41 +18,54 @@ static int g_argc = 1;
 static char argv1[64];
 static char argv2[64];
 
-int ptym_open(char *pts_name, char *pts_name_s , int pts_namesz)
+typedef struct {
+    int direction;
+    int leftFD;
+    int rightFD;
+    int isRunning;
+} thread_para;
+
+// 传参用结构体
+thread_para thread_para1;
+thread_para thread_para2;
+
+pthread_t thread1;
+pthread_t thread2;
+
+static void signal_handler(int signo)
 {
-    int     fdm;
-    char    *ptr;
-
-    strncpy(pts_name, "/dev/ptmx", pts_namesz);
-    pts_name[pts_namesz - 1] = '\0';
-
-
-    if ((fdm = posix_openpt(O_RDWR | O_NONBLOCK)) < 0) return -1;
-
-    if (grantpt(fdm) < 0) {
-        close(fdm);
-        return -2;
+    if (signo == SIGINT){
+        printf("main receive signal SIGINT\n");
+        thread_para1.isRunning = 0;
+        thread_para2.isRunning = 0;
     }
-
-    if (unlockpt(fdm) < 0) {
-        close(fdm);
-        return -3;
+    if (signo == SIGTERM){
+        printf("main receive signal: SIGTERM\n");
     }
+}
 
-    if ((ptr = ptsname(fdm)) == NULL) {
-        close(fdm);
-        return -4;
-    }
-
-    strncpy(pts_name_s, ptr, pts_namesz);
-    pts_name[pts_namesz - 1] = '\0';
-
-    return(fdm);
+// 打开连接并获得句柄
+int getFd(char * slave_name)
+{
+    char * tmp;
+    /*
+     * 以读写方式打开|如果pathname指向终端设备，
+     * 不将此设备分配作为进程的控制终端,
+     * 第三个相当重要没有数据时要求立即返回使用非堵塞模式
+     */
+    int onlyFd= posix_openpt(O_RDWR | O_NOCTTY | O_NONBLOCK);
+    if(onlyFd == -1
+            || grantpt(onlyFd) == -1             // 更改不同组别的读写特权
+            || unlockpt(onlyFd) == -1            // 在读写的同时允许其他进程进行访问
+            || (tmp = ptsname(onlyFd)) == NULL ) // 得到伪从串口名字
+        return -1;
+    strncpy(slave_name, tmp, 64);
+    slave_name[63] = '\0';
+    return (onlyFd);
 }
 
 int conf_ser(int serialDev)
 {
-
     int rc;
     struct termios params;
 
@@ -71,7 +83,7 @@ int conf_ser(int serialDev)
     params.c_cflag |= (B9600 |CS8 | CLOCAL | CREAD);
 
     // Make Read Blocking
-    //fcntl(serialDev, F_SETFL, 0);
+    // fcntl(serialDev, F_SETFL, 0);
 
     // Set serial attributes
     rc = tcsetattr(serialDev, TCSANOW, &params);
@@ -83,7 +95,8 @@ int conf_ser(int serialDev)
     return EXIT_SUCCESS;
 }
 
-void copydata(int fdfrom, int fdto, int direction)
+
+void * copydata(int fdfrom, int fdto,int direction)
 {
     ssize_t br, bw;
     char *pbuf = buffer;
@@ -147,14 +160,68 @@ void copydata(int fdfrom, int fdto, int direction)
     }
 }
 
+void * deal_tty( void * arg)
+{
+    thread_para * recPara;
+    recPara = (thread_para *)arg;
+    fd_set rfds;
+    int fd1 = recPara->leftFD;
+    int fd2 = recPara->rightFD;
+    struct timespec timeout = {5, 0};
+    struct timespec timein = {5, 0};
+    while(recPara->isRunning){
+        FD_ZERO(&rfds);
+        FD_SET(fd1, &rfds);
+        FD_SET(fd2, &rfds);                                         // 在不连通的情况下，每五秒轮巡一次，文件状态不改变什么也不做
+        if(pselect(fd2 + 1, &rfds, NULL, NULL, &timeout, NULL) > 0){// 如果用select函数时间会慢慢被扣掉最后会变成非堵塞状态CPU使用率百分之两百
+            if (FD_ISSET(fd1, &rfds)) {
+                copydata(fd1, fd2, 0);
+            }
+            if (FD_ISSET(fd2, &rfds)) {
+                copydata(fd2, fd1, 1);
+            }
+            while(recPara->isRunning) {
+                /*
+                 * 必须放置在while循环内，每一次执行之前对文件状态进行初始化！！！
+                 * 设置了三秒的超时等待防止在因为文件状态不改变卡死，发送报文的周期怎么样也比三秒小吧。
+                 */
+                FD_ZERO(&rfds);
+
+                FD_SET(fd1, &rfds);
+                FD_SET(fd2, &rfds);
+                /*
+                 * select用来观察在结构中的文件是否有数据需要读
+                 * 第一个参数只是设置一个数值大小
+                 * 第二个参数观察的是读属性
+                 */
+                int mark = pselect(fd2 + 1, &rfds, NULL, NULL, &timein, NULL);
+                if ( mark == -1 || mark == 0) {  // -1是错误，0是超时返回，正常是返回这个文件结构里面发生改变文件的个数
+                    break;                       // 如果五秒之内没有收到数据退出内层循环，此时如果外层isRunning为false直接便会结束线程
+                }
+                if (FD_ISSET(fd1, &rfds)) {
+                    copydata(fd1, fd2, 0);
+                }
+                if (FD_ISSET(fd2, &rfds)) {
+                    copydata(fd2, fd1, 1);
+                }
+            }
+        }
+    }
+}
+
 int main(int argc, char* argv[])
 {
+
     int fd1;
     int fd2;
-    fd_set rfds;
+    fd1 = getFd(slave1);
+    fd2 = getFd(slave2);
 
-    fd1=ptym_open(master1, slave1, 64);
-    fd2=ptym_open(master2, slave2, 64);
+    if (signal(SIGINT, signal_handler) == SIG_ERR ||
+            signal(SIGTERM, signal_handler) == SIG_ERR) {
+        printf("main process register signal handler fail\n");
+        return 0;
+    }
 
     if (argc >= 3) {
         unlink(argv[1]);
@@ -167,7 +234,6 @@ int main(int argc, char* argv[])
             fprintf(stderr, "Cannot create: %s\n", argv[2]);
             return 1;
         }
-
         g_argc = argc;
         strcpy(argv1, argv[1]);
         strcpy(argv2, argv[2]);
@@ -180,25 +246,17 @@ int main(int argc, char* argv[])
     conf_ser(fd1);
     conf_ser(fd2);
 
-    while(1) {
+    thread_para1.direction = 0;
+    thread_para2.direction = 1;
+    thread_para1.leftFD = thread_para2.leftFD = fd1;
+    thread_para1.rightFD = thread_para2.rightFD = fd2;
+    thread_para1.isRunning = thread_para2.isRunning = 1;
 
-        FD_ZERO(&rfds);
-        FD_SET(fd1, &rfds);
-        FD_SET(fd2, &rfds);
+    pthread_create(&thread1, NULL, deal_tty, &thread_para1);
+    pthread_create(&thread2, NULL, deal_tty, &thread_para2);
 
-        if (-1 == select(fd2 + 1, &rfds, NULL, NULL, NULL)) {
-            perror("select");
-            return 1;
-        }
-
-        if (FD_ISSET(fd1, &rfds)) {
-            copydata(fd1, fd2, 0);
-        }
-
-        if (FD_ISSET(fd2, &rfds)) {
-            copydata(fd2, fd1, 1);
-        }
-    }
+    pthread_join(thread1, NULL);
+    pthread_join(thread2, NULL);
 
     close(fd1);
     close(fd2);

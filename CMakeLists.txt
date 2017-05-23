@@ -9,7 +9,11 @@ set (SRC_VERSION_PATCH 1)
 set (SRC_VERSION ${SRC_VERSION_MAJOR}.${SRC_VERSION_MINOR}.${SRC_VERSION_PATCH})
 set (PROJECT_VERSION "${SRC_VERSION}")
 
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=c11")
+
 #add_definitions(-DDEBUG)
 add_definitions(-D_GNU_SOURCE)
+
+TARGET_LINK_LIBRARIES(vttys pthread)
 
 install(TARGETS vttys DESTINATION bin)
