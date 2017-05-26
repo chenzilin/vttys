@@ -9,15 +9,16 @@
 #include <pthread.h>
 #include <sys/select.h>
 
+// 保存伪从终端的名字
 static char slave1[64];
 static char slave2[64];
 
+// 报文缓存区
 static char buffer[1024];
 
 static int g_argc = 1;
 static char argv1[64];
 static char argv2[64];
-
 typedef struct {
     int direction;
     int leftFD;
@@ -44,7 +45,6 @@ static void signal_handler(int signo)
     }
 }
 
-// 打开连接并获得句柄
 int getFd(char * slave_name)
 {
     char * tmp;
@@ -66,6 +66,7 @@ int getFd(char * slave_name)
 
 int conf_ser(int serialDev)
 {
+
     int rc;
     struct termios params;
 
@@ -160,7 +161,7 @@ void * copydata(int fdfrom, int fdto,int direction)
     }
 }
 
-void * deal_tty( void * arg)
+void * deal_tty1( void * arg)
 {
     thread_para * recPara;
     recPara = (thread_para *)arg;
@@ -172,21 +173,18 @@ void * deal_tty( void * arg)
     while(recPara->isRunning){
         FD_ZERO(&rfds);
         FD_SET(fd1, &rfds);
-        FD_SET(fd2, &rfds);                                         // 在不连通的情况下，每五秒轮巡一次，文件状态不改变什么也不做
-        if(pselect(fd2 + 1, &rfds, NULL, NULL, &timeout, NULL) > 0){// 如果用select函数时间会慢慢被扣掉最后会变成非堵塞状态CPU使用率百分之两百
+        FD_SET(fd2, &rfds);                                          // 在不连通的情况下，每五秒轮巡一次，文件状态不改变什么也不做
+        if(pselect(fd2 + 1, &rfds, NULL, NULL, &timeout, NULL) > 0){ // 如果用select函数时间会慢慢被扣掉最后会变成非堵塞状态CPU使用率百分之两百
             if (FD_ISSET(fd1, &rfds)) {
                 copydata(fd1, fd2, 0);
-            }
-            if (FD_ISSET(fd2, &rfds)) {
-                copydata(fd2, fd1, 1);
             }
             while(recPara->isRunning) {
                 /*
                  * 必须放置在while循环内，每一次执行之前对文件状态进行初始化！！！
-                 * 设置了三秒的超时等待防止在因为文件状态不改变卡死，发送报文的周期怎么样也比三秒小吧。
+                 * 设置了三秒的超时等待防止在因为文件状态不改变卡死，
+                 * 发送报文的周期怎么样也比三秒小吧
                  */
                 FD_ZERO(&rfds);
-
                 FD_SET(fd1, &rfds);
                 FD_SET(fd2, &rfds);
                 /*
@@ -195,11 +193,52 @@ void * deal_tty( void * arg)
                  * 第二个参数观察的是读属性
                  */
                 int mark = pselect(fd2 + 1, &rfds, NULL, NULL, &timein, NULL);
-                if ( mark == -1 || mark == 0) {  // -1是错误，0是超时返回，正常是返回这个文件结构里面发生改变文件的个数
-                    break;                       // 如果五秒之内没有收到数据退出内层循环，此时如果外层isRunning为false直接便会结束线程
+                if ( mark == -1 || mark == 0) { // -1是错误，0是超时返回，正常是返回这个文件结构里面发生改变文件的个数
+                    break;                      // 如果五秒之内没有收到数据退出内层循环，此时如果外层isRunning为false直接便会结束线程
                 }
                 if (FD_ISSET(fd1, &rfds)) {
                     copydata(fd1, fd2, 0);
+                }
+            }
+        }
+    }
+}
+
+void * deal_tty2( void * arg)
+{
+    thread_para * recPara;
+    recPara = (thread_para *)arg;
+    fd_set rfds;
+    int fd1 = recPara->leftFD;
+    int fd2 = recPara->rightFD;
+    struct timespec timeout = {5, 0};
+    struct timespec timein = {5, 0};
+    while(recPara->isRunning){
+        FD_ZERO(&rfds);
+        FD_SET(fd1, &rfds);
+        FD_SET(fd2, &rfds);                                          // 在不连通的情况下，每五秒轮巡一次，文件状态不改变什么也不做
+        if(pselect(fd2 + 1, &rfds, NULL, NULL, &timeout, NULL) > 0){ // 如果用select函数时间会慢慢被扣掉最后会变成非堵塞状态CPU使用率百分之两百
+            if (FD_ISSET(fd2, &rfds)) {
+                copydata(fd2, fd1, 1);
+            }
+            while(recPara->isRunning) {
+                /*
+                 * 必须放置在while循环内，每一次执行之前对文件状态进行初始化！！！
+                 * 设置了三秒的超时等待防止在因为文件状态不改变卡死，
+                 * 发送报文的周期怎么样也比三秒小吧
+                 */
+                FD_ZERO(&rfds);
+                FD_SET(fd1, &rfds);
+                FD_SET(fd2, &rfds);
+
+                /*
+                 * select用来观察在结构中的文件是否有数据需要读
+                 * 第一个参数只是设置一个数值大小
+                 * 第二个参数观察的是读属性
+                 */
+                int mark = pselect(fd2 + 1, &rfds, NULL, NULL, &timein, NULL);
+                if ( mark == -1 || mark == 0) {  // -1是错误，0是超时返回，正常是返回这个文件结构里面发生改变文件的个数
+                    break;                       // 如果五秒之内没有收到数据退出内层循环，此时如果外层isRunning为false直接便会结束线程
                 }
                 if (FD_ISSET(fd2, &rfds)) {
                     copydata(fd2, fd1, 1);
@@ -211,7 +250,6 @@ void * deal_tty( void * arg)
 
 int main(int argc, char* argv[])
 {
-
     int fd1;
     int fd2;
     fd1 = getFd(slave1);
@@ -252,8 +290,8 @@ int main(int argc, char* argv[])
     thread_para1.rightFD = thread_para2.rightFD = fd2;
     thread_para1.isRunning = thread_para2.isRunning = 1;
 
-    pthread_create(&thread1, NULL, deal_tty, &thread_para1);
-    pthread_create(&thread2, NULL, deal_tty, &thread_para2);
+    pthread_create(&thread1, NULL, deal_tty1, &thread_para1);
+    pthread_create(&thread2, NULL, deal_tty2, &thread_para2);
 
     pthread_join(thread1, NULL);
     pthread_join(thread2, NULL);
